@@ -6,7 +6,7 @@
   "kind": "native",
   "entry": "bin/image_plugin.dll",
   "abi": 5,
-  "platforms": ["windows-x86_64"],
+  "platforms": ["windows-x86_64", "windows-aarch64", "linux-x86_64", "linux-aarch64", "macos-aarch64"],
   "description": "注册 image.render：把 HTML 或「模板 + 数据」渲染成 JPEG/PNG。",
   "license": "MIT OR Apache-2.0"
 }

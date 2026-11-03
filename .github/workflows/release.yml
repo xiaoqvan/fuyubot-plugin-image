@@ -16,9 +16,13 @@ jobs:
         include:
           - os: windows-latest
             platform: windows-x86_64
+          - os: windows-11-vs2026-arm
+            platform: windows-aarch64
           - os: ubuntu-latest
             platform: linux-x86_64
-          - os: macos-latest
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+          - os: macos-14
             platform: macos-aarch64
     runs-on: ${{ matrix.os }}
     steps:

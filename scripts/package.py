@@ -14,9 +14,10 @@ PLUGIN_ID = "image-plugin"
 # platform: (动态库文件名, 额外随包文件)
 TARGETS = {
     "windows-x86_64": ("image_plugin.dll", ["image-shot.exe"]),
+    "windows-aarch64": ("image_plugin.dll", ["image-shot.exe"]),
     "linux-x86_64": ("libimage_plugin.so", ["image-shot"]),
+    "linux-aarch64": ("libimage_plugin.so", ["image-shot"]),
     "macos-aarch64": ("libimage_plugin.dylib", ["image-shot"]),
-    "macos-x86_64": ("libimage_plugin.dylib", ["image-shot"]),
 }
 
 
