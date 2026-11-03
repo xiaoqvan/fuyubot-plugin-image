@@ -97,8 +97,7 @@ cargo run --release --bin image-shot -- --check   # 运行时自检
 
 ## 发布
 
-推 `v<版本>` tag，CI 按平台打包（Windows x86_64 / aarch64、Linux x86_64 / aarch64、
-macOS aarch64）：
+推 `v<版本>` tag，CI 按平台打包（Windows x86_64、Linux x86_64、macOS aarch64）：
 
 ```text
 image-plugin-<version>-<平台>.zip
