@@ -1,112 +1,114 @@
 # image-plugin
 
-FuyuBot 的 HTML 出图插件：注册 **`image.render`** 服务，用 Ultralight 2.0 把 HTML
-截成 JPEG / PNG。插件本身没有任何业务字段——模板、数据、尺寸都由调用方给。
+FuyuBot 的 HTML 出图插件。注册 `image.render` 服务：给它 HTML 或「模板 + 数据」，
+它返回一张 JPEG / PNG。
 
-```text
-任意插件
-  │  get_service("image.render") → ServiceVTable
-  │  render({"template":"...","data":{...},"out":"..."})
-  ▼
-image_plugin.dll（宿主进程内的 cdylib，只发请求）
-  │  JSON 行协议，stdin/stdout
-  ▼
-image-shot（独立进程，独占主线程）
-  │  Ultralight 2.0：绑定数据 → 加载 HTML → 截图
-  ▼
-  JPEG/PNG 路径
-```
+插件不带业务字段，模板、数据、尺寸都由调用方给。
 
-- 插件 id：`image-plugin`
-- 产物：`image_plugin.dll` + `image-shot.exe`（Linux/macOS 对应 `libimage_plugin.so` / `image-shot`）
-- ABI：5（`fuyubot-abi 0.1.2`）
+## 安装
 
-## 为什么是两个产物
-
-Ultralight 要求 Renderer 在**主线程**创建并驱动，而宿主主线程归 tokio，插件里抢不到。
-渲染器单独成进程：崩了只崩一张图，升级渲染器也不用重启宿主。两个产物来自同一个 crate，
-请求类型只有一份，不会出现两边字段对不上。
-
-## 服务方法
-
-| 方法 | 入参 | 出参 |
-| --- | --- | --- |
-| `render` | `{"template","template_dir","data","out","width","height","scale","format","quality","ready_expr"}` 或 `{"html","out",...}` | `{"ok":true,"path","width","height","bytes","ms"}` |
-| `ping` | 任意 | `{"ok":true,"backend":"ultralight","plugin":"image-plugin","info":{...}}` |
-
-`out` 必填：交给 TDLib 的图片必须是本地路径，所以图一定落盘。
-
-服务是**同步**的：调用方要放进 `spawn_blocking` 或专用线程，别塞进 TDLib 更新回调。
-
-## 模板
-
-模板是纯 HTML，加六种标签：
-
-| 写法 | 作用 |
-| --- | --- |
-| `{{ 字段 }}` | 输出并 HTML 转义 |
-| `{{& 字段 }}` / `{{{ 字段 }}}` | 原样输出 |
-| `{{#if 字段}} … {{else}} … {{/if}}` | 条件块 |
-| `{{#each 字段}} … {{/each}}` | 遍历（循环里 `this` / `@index` / `@first`……） |
-| `{{ a.b }}` | 嵌套字段 |
-
-字段不存在会直接报错（`#if` 除外）。模板跟业务走，不放插件里；`templates/demo.html`
-只是接口示例。
-
-## 启动配置（可省略）
-
-```json
-{ "binary": "D:/.../image-shot.exe", "templates_dir": "D:/.../templates" }
-```
-
-`templates_dir` 是请求里没给 `template_dir` 时的默认值。
-
-## 部署
-
-目录包布局（推荐）：
+1. 把发布包解压到机器人的插件目录：
 
 ```text
 plugins/
 └── image-plugin/
     ├── plugin.json
     └── bin/
-        ├── image_plugin.dll
-        ├── image-shot.exe
-        └── ultralight/               # Ultralight 运行时（可选放这里）
-            ├── Ultralight.dll
-            ├── UltralightCore.dll
-            ├── WebCore.dll
-            ├── AppCore.dll
-            └── resources/{icudt67l.dat,cacert.pem}
+        ├── image_plugin.dll       # Linux: libimage_plugin.so / macOS: libimage_plugin.dylib
+        ├── image-shot.exe         # 渲染器，必须和插件放在一起
+        └── ultralight/            # Ultralight 运行时
 ```
 
-`image-shot` 查找顺序：`IMAGE_SHOT_BIN` → `plugins/<id>/bin/` → `plugins/<id>/` →
-`plugins/` → `plugins/ultralight/` → 宿主 exe 同级 → 仓库 target（开发态）。
-Ultralight DLL 查找：`ULTRALIGHT_DIR` → `image-shot` 同级 → 同级 `ultralight/`。
+2. 从 Ultralight 官网下载 SDK：<https://ultralig.ht/download>
 
-运行时（Ultralight SDK 的 `bin/` + `resources/`）**不随本仓发布**，部署时放到上面任一位置。
-
-## 构建
-
-```bash
-cargo build --release
-# Windows: target/release/image_plugin.dll + image-shot.exe
-
-cargo run --release --bin image-shot -- --check   # 运行时自检
-```
-
-## 发布
-
-推 `v<版本>` tag，CI 按平台打包（Windows x86_64、Linux x86_64、macOS aarch64）：
+3. 把 SDK 里的运行时文件放进 `bin/ultralight/`：
 
 ```text
-image-plugin-<version>-<平台>.zip
-├── plugin.json
-└── bin/
-    ├── image_plugin.dll
-    └── image-shot.exe
+bin/ultralight/
+├── Ultralight.dll
+├── UltralightCore.dll
+├── WebCore.dll
+├── AppCore.dll
+└── resources/
+    ├── icudt67l.dat
+    └── cacert.pem
 ```
 
-## License
+Linux / macOS 用 SDK 里对应的 `.so` / `.dylib`，文件名不变。
 
-MIT OR Apache-2.0
+4. 重启机器人。渲染器默认按 `plugins/image-plugin/bin/` → `plugins/image-plugin/`
+   → `plugins/` → `plugins/ultralight/` 的顺序查找运行时。
+
+如果运行时放在别处，可以在配置里指定渲染器路径。
+
+## 配置
+
+```toml
+[plugin.image-plugin]
+binary = "D:/fuyubot/plugins/image-plugin/bin/image-shot.exe"
+templates_dir = "D:/fuyubot/plugins/image-plugin/templates"
+```
+
+| 键 | 必填 | 说明 |
+| --- | --- | --- |
+| `binary` | 否 | `image-shot` 的路径；不写则按默认目录查找 |
+| `templates_dir` | 否 | 请求里没给 `template_dir` 时使用的默认模板目录 |
+
+也可以不写配置，把 `image-shot` 和 `ultralight/` 放到插件目录即可。
+
+## 使用
+
+服务名 `image.render`，两个方法：
+
+| 方法 | 入参 | 返回 |
+| --- | --- | --- |
+| `render` | `template` + `data`，或直接给 `html` | `{"ok":true,"path","width","height","bytes","ms"}` |
+| `ping` | 任意 | `{"ok":true,"backend":"ultralight","plugin":"image-plugin"}` |
+
+`render` 的常用参数：
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `out` | 是 | 输出图片路径，必须是本地路径 |
+| `template` | 二选一 | 模板文件名（不含 `.html`），需要配合 `template_dir` |
+| `template_dir` | 否 | 模板所在目录，不写则用 `templates_dir` |
+| `data` | 否 | 绑定进模板的 JSON 对象 |
+| `html` | 二选一 | 直接给完整 HTML，此时不用 `template` |
+| `width` / `height` | 否 | CSS 视口尺寸，默认 1000 × 550 |
+| `scale` | 否 | 设备像素比，默认 2.0（2× 超采样） |
+| `format` | 否 | `jpeg` 或 `png`，默认 `jpeg` |
+| `quality` | 否 | JPEG 质量，1–100，默认 90 |
+| `ready_expr` | 否 | 等待页面里某个 JS 表达式为真后再截图 |
+
+请求示例：
+
+```json
+{
+  "template": "demo",
+  "template_dir": "plugins/image-plugin/templates",
+  "data": { "title": "Hello", "subtitle": "FuyuBot" },
+  "out": "D:/tmp/card.png",
+  "width": 1200,
+  "height": 630,
+  "format": "png"
+}
+```
+
+模板是纯 HTML，支持这些占位符：
+
+| 写法 | 作用 |
+| --- | --- |
+| `{{ 字段 }}` | 输出并转义 |
+| `{{& 字段 }}` 或 `{{{ 字段 }}}` | 原样输出 |
+| `{{#if 字段}} … {{else}} … {{/if}}` | 条件 |
+| `{{#each 字段}} … {{/each}}` | 循环，循环内可用 `this`、`@index`、`@first` |
+| `{{ a.b }}` | 嵌套字段 |
+
+字段不存在会报错（`#if` 里除外）。`templates/demo.html` 是可直接改的示例。
+
+## 注意
+
+- `render` 是同步调用，可能耗时 0.2–1 秒；调用方应放到独立线程或 `spawn_blocking`，
+  不要阻塞 TDLib 更新回调。
+- 渲染器以独立进程运行；它崩溃只会让当前这张图失败，不会影响机器人。
+- `out` 必须可写，目录不存在会报错。
